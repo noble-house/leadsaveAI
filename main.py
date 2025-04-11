@@ -118,7 +118,7 @@ for i, row in df.iterrows():
                     row["Lead Score"] = score
                     if save_row(row):
                         st.success("✅ Email sent and sheet updated.")
-                        st.experimental_rerun()  # 🔁 Force UI refresh
+                        st.rerun()  # ✅ Modern refresh
                     else:
                         st.warning("⚠️ Email sent, but failed to update sheet.")
                 else:
