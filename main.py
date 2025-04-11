@@ -8,7 +8,7 @@ def send_email(to_email, subject, message_body):
         response = requests.post(
             "https://api.sendgrid.com/v3/mail/send",
             headers={
-                "Authorization": f"Bearer " + st.secrets["sendgrid"]["api_key"],
+                "Authorization": f"Bearer {st.secrets['sendgrid']['api_key']}",
                 "Content-Type": "application/json"
             },
             json={
@@ -45,8 +45,35 @@ def save_row(row):
     }
     return requests.patch(f"{sheet_url}/search", params=payload, json=update).status_code == 200
 
-# === UI Setup ===
+# === Streamlit App Setup ===
 st.set_page_config(page_title="AI Lead Dashboard", layout="wide")
+
+# === Style Fixes (CRM Look) ===
+st.markdown("""
+<style>
+    .block-container {
+        padding-top: 1rem;
+        padding-bottom: 0rem;
+    }
+    .crm-card {
+        background-color: #ffffff;
+        border: 1px solid #e2e2e2;
+        border-radius: 8px;
+        padding: 1rem;
+        margin-bottom: 0.8rem;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+        transition: 0.2s ease;
+    }
+    .crm-card:hover {
+        background-color: #f9f9f9;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.06);
+    }
+    textarea, input {
+        font-size: 14px !important;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 st.title("📊 AI Outreach Lead Dashboard")
 
 df = load_data()
@@ -63,80 +90,62 @@ if search_term:
 
 st.markdown(f"**{len(df)} leads matched.**")
 
-# === CRM TABLE VIEW ===
+# === Sleek Table View
 if view_mode == "Table View":
-    st.markdown("""
-    <style>
-        .crm-card {
-            background-color: #ffffff;
-            border: 1px solid #e0e0e0;
-            border-radius: 8px;
-            padding: 1rem;
-            margin-bottom: 10px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-        }
-        .crm-card:hover {
-            background-color: #fafafa;
-        }
-    </style>
-    """, unsafe_allow_html=True)
-
     for i, row in df.iterrows():
-        with st.container():
-            st.markdown('<div class="crm-card">', unsafe_allow_html=True)
-            cols = st.columns([1.5, 1.5, 2, 1.5, 1.5, 2, 1, 3, 0.8, 1])
+        st.markdown('<div class="crm-card">', unsafe_allow_html=True)
+        cols = st.columns([1.5, 1.5, 2, 1.5, 1.5, 2, 1, 3, 0.8, 1])
 
-            name = row.get("Name", "")
-            company = row.get("Company", "")
-            email = row.get("Email", "")
-            job = row.get("linkedinJobTitle", "")
-            headline = row.get("linkedinHeadline", "")
-            website = row.get("Company Website", "")
-            status = row.get("Status", "Pending")
-            email_draft = row.get("Email Draft", "")
-            score = int(row.get("Lead Score") or 0)
+        name = row.get("Name", "")
+        company = row.get("Company", "")
+        email = row.get("Email", "")
+        job = row.get("linkedinJobTitle", "")
+        headline = row.get("linkedinHeadline", "")
+        website = row.get("Company Website", "")
+        status = row.get("Status", "Pending")
+        email_draft = row.get("Email Draft", "")
+        score = int(row.get("Lead Score") or 0)
 
-            cols[0].text_input("Name", value=name, key=f"name_{i}", disabled=True)
-            cols[1].text_input("Company", value=company, key=f"company_{i}", disabled=True)
-            new_email = cols[2].text_input("Email", value=email, key=f"email_{i}")
-            new_job = cols[3].text_input("Job Title", value=job, key=f"job_{i}")
-            new_headline = cols[4].text_input("Headline", value=headline, key=f"headline_{i}")
-            new_website = cols[5].text_input("Website", value=website, key=f"website_{i}")
-            new_status = cols[6].selectbox("Status", ["Pending", "Processed", "Sent"],
-                                           index=["Pending", "Processed", "Sent"].index(status), key=f"status_{i}")
-            new_draft = cols[7].text_area("Email Draft", value=email_draft, height=100, key=f"draft_{i}")
-            new_score = cols[8].number_input("Score", value=score, step=1, key=f"score_{i}")
+        cols[0].text_input("Name", value=name, key=f"name_{i}", disabled=True)
+        cols[1].text_input("Company", value=company, key=f"company_{i}", disabled=True)
+        new_email = cols[2].text_input("Email", value=email, key=f"email_{i}")
+        new_job = cols[3].text_input("Job Title", value=job, key=f"job_{i}")
+        new_headline = cols[4].text_input("Headline", value=headline, key=f"headline_{i}")
+        new_website = cols[5].text_input("Website", value=website, key=f"website_{i}")
+        new_status = cols[6].selectbox("Status", ["Pending", "Processed", "Sent"],
+                                       index=["Pending", "Processed", "Sent"].index(status), key=f"status_{i}")
+        new_draft = cols[7].text_area("Email Draft", value=email_draft, height=100, key=f"draft_{i}")
+        new_score = cols[8].number_input("Score", value=score, step=1, key=f"score_{i}")
 
-            if cols[9].button("📤 Send", key=f"send_{i}"):
-                if not new_email:
-                    st.warning(f"Missing email for {name}")
-                elif not new_draft:
-                    st.warning(f"Missing draft for {name}")
-                else:
-                    success, result = send_email(new_email, f"Quick note for {company}", new_draft)
-                    if success:
-                        row.update({
-                            "Email": new_email,
-                            "Status": "Sent",
-                            "linkedinJobTitle": new_job,
-                            "linkedinHeadline": new_headline,
-                            "Company Website": new_website,
-                            "Email Draft": new_draft,
-                            "Lead Score": new_score
-                        })
-                        if save_row(row):
-                            st.success(f"✅ Sent to {new_email}")
-                            st.rerun()
-                        else:
-                            st.warning("⚠️ Sent but failed to update sheet.")
+        if cols[9].button("📤", key=f"send_{i}"):
+            if not new_email:
+                st.warning(f"⚠️ Email missing for {name}")
+            elif not new_draft:
+                st.warning(f"⚠️ Draft missing for {name}")
+            else:
+                success, result = send_email(new_email, f"Quick note for {company}", new_draft)
+                if success:
+                    row.update({
+                        "Email": new_email,
+                        "Status": "Sent",
+                        "linkedinJobTitle": new_job,
+                        "linkedinHeadline": new_headline,
+                        "Company Website": new_website,
+                        "Email Draft": new_draft,
+                        "Lead Score": new_score
+                    })
+                    if save_row(row):
+                        st.success(f"✅ Email sent to {new_email}")
+                        st.rerun()
                     else:
-                        st.error(f"❌ Failed to send: {result}")
-            st.markdown('</div>', unsafe_allow_html=True)
+                        st.warning("⚠️ Sent but sheet not updated.")
+                else:
+                    st.error(f"❌ Failed: {result}")
+        st.markdown('</div>', unsafe_allow_html=True)
 
-# === EXPANDED VIEW ===
+# === Expanded View
 else:
     st.markdown("### 🔍 Expanded View (1 per lead)")
-
     for i, row in df.iterrows():
         with st.expander(f"💼 {row.get('Company', '')} — {row.get('Name', '')}"):
             col1, col2, col3 = st.columns([2, 2, 6])
@@ -179,4 +188,4 @@ else:
                         else:
                             st.warning("Sent, but failed to update sheet.")
                     else:
-                        st.error(f"❌ Failed to send: {result}")
+                        st.error(f"❌ Failed to send email: {result}")
