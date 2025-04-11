@@ -49,11 +49,15 @@ def save_row(row):
         "Company": row["Company"]
     }
     update = {
-        "AI Summary": row["AI Summary"],
-        "Email Draft": row["Email Draft"],
-        "Lead Score": int(row["Lead Score"]) if row["Lead Score"] else 0,
-        "Status": row["Status"],
-        "Email": row.get("Email", "")
+        "Email": row.get("Email", ""),
+        "LinkedIn URL": row.get("LinkedIn URL", ""),
+        "linkedinJobTitle": row.get("linkedinJobTitle", ""),
+        "linkedinHeadline": row.get("linkedinHeadline", ""),
+        "Company Website": row.get("Company Website", ""),
+        "Status": row.get("Status", ""),
+        "AI Summary": row.get("AI Summary", ""),
+        "Email Draft": row.get("Email Draft", ""),
+        "Lead Score": int(row["Lead Score"]) if row.get("Lead Score") else 0
     }
     patch = requests.patch(f"{sheet_url}/search", params=payload, json=update)
     return patch.status_code == 200
@@ -76,56 +80,54 @@ if search_term:
 
 st.markdown(f"**Showing {len(df)} leads**")
 
-# === Editable Data Table ===
-edited_df = st.data_editor(
-    df,
-    num_rows="dynamic",
-    use_container_width=True,
-    hide_index=True,
-    column_config={
-        "AI Summary": st.column_config.TextColumn(width="medium"),
-        "Email Draft": st.column_config.TextColumn(width="large"),
-        "Lead Score": st.column_config.NumberColumn(format="%d")
-    }
-)
+# === Table Header ===
+header = st.columns([1.2, 1.2, 1.8, 1.8, 1.5, 1.5, 2, 1, 2.5, 3, 0.8, 1])
+headers = [
+    "👤 Name", "🏢 Company", "✉️ Email", "🔗 LinkedIn", "💼 Job Title",
+    "📝 Headline", "🌐 Website", "📌 Status", "🧠 AI Summary", "📄 Email Draft", "⭐ Score", "🚀 Action"
+]
+for col, label in zip(header, headers):
+    col.markdown(f"**{label}**")
 
-# === Save Button ===
-if st.button("💾 Save All Changes to Google Sheet"):
-    with st.spinner("Saving..."):
-        success_count = 0
-        for _, row in edited_df.iterrows():
-            if save_row(row):
-                success_count += 1
-        st.success(f"✅ {success_count} rows updated successfully!")
+# === Table Body ===
+for i, row in df.iterrows():
+    cols = st.columns([1.2, 1.2, 1.8, 1.8, 1.5, 1.5, 2, 1, 2.5, 3, 0.8, 1])
 
-# === Manual Send Section ===
-st.subheader("📨 Send Emails Manually")
+    # Read-only
+    cols[0].markdown(row.get("Name", ""))
+    cols[1].markdown(row.get("Company", ""))
+    cols[3].markdown(row.get("LinkedIn URL", ""))
+    cols[4].markdown(row.get("linkedinJobTitle", ""))
+    cols[5].markdown(row.get("linkedinHeadline", ""))
+    cols[6].markdown(row.get("Company Website", ""))
+    cols[8].markdown(row.get("AI Summary", "")[:150] + "...")
 
-for i, row in edited_df.iterrows():
-    if row["Status"].lower() != "sent":
-        col1, col2 = st.columns([5, 1])
-        with col1:
-            st.markdown(f"""
-            **{row['Name']}** at **{row['Company']}**  
-            ✉️ Email: `{row.get('Email', 'Not provided')}`  
-            📄 **Draft Preview:**  
-            `{row['Email Draft'][:120] if row['Email Draft'] else '[No Draft]'}`
-            """)
-        with col2:
-            if st.button("Send Now", key=f"send_{i}"):
-                if not row.get("Email"):
-                    st.warning(f"⚠️ No email address for {row['Name']}")
-                elif not row.get("Email Draft"):
-                    st.warning(f"⚠️ No email draft for {row['Name']}")
+    # Editable
+    email = cols[2].text_input(f"email_{i}", value=row.get("Email", ""), label_visibility="collapsed")
+    status = cols[7].selectbox(f"status_{i}", ["Pending", "Processed", "Sent"], index=["Pending", "Processed", "Sent"].index(row.get("Status", "Pending")), label_visibility="collapsed)
+    email_draft = cols[9].text_area(f"draft_{i}", value=row.get("Email Draft", ""), height=80, label_visibility="collapsed")
+    lead_score = cols[10].number_input(f"score_{i}", value=int(row.get("Lead Score", 0)), step=1, label_visibility="collapsed")
+
+    # Send button
+    if cols[11].button("Send Now", key=f"send_{i}"):
+        if not email:
+            st.warning(f"⚠️ No email for {row['Name']}")
+        elif not email_draft:
+            st.warning(f"⚠️ No draft for {row['Name']}")
+        else:
+            success, result = send_email(
+                to_email=email,
+                subject=f"Quick note for {row['Company']}",
+                message_body=email_draft
+            )
+            if success:
+                row["Email"] = email
+                row["Status"] = "Sent"
+                row["Email Draft"] = email_draft
+                row["Lead Score"] = lead_score
+                if save_row(row):
+                    st.success(f"✅ Email sent to {email}")
                 else:
-                    success, result = send_email(
-                        to_email=row["Email"],
-                        subject=f"Quick note for {row['Company']}",
-                        message_body=row["Email Draft"]
-                    )
-                    if success:
-                        row["Status"] = "Sent"
-                        save_row(row)
-                        st.success(f"✅ Email sent to {row['Email']}")
-                    else:
-                        st.error(f"❌ Failed to send: {result}")
+                    st.warning("⚠️ Email sent, but failed to update sheet.")
+            else:
+                st.error(f"❌ Failed to send: {result}")
