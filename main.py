@@ -104,7 +104,12 @@ for i, row in df.iterrows():
 
     # Editable
     email = cols[2].text_input(f"email_{i}", value=row.get("Email", ""), label_visibility="collapsed")
-    status = cols[7].selectbox(f"status_{i}", ["Pending", "Processed", "Sent"], index=["Pending", "Processed", "Sent"].index(row.get("Status", "Pending")), label_visibility="collapsed)
+    status = cols[7].selectbox(
+        f"status_{i}",
+        options=["Pending", "Processed", "Sent"],
+        index=["Pending", "Processed", "Sent"].index(row.get("Status", "Pending")),
+        label_visibility="collapsed"
+    )
     email_draft = cols[9].text_area(f"draft_{i}", value=row.get("Email Draft", ""), height=80, label_visibility="collapsed")
     lead_score = cols[10].number_input(f"score_{i}", value=int(row.get("Lead Score", 0)), step=1, label_visibility="collapsed")
 
