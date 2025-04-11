@@ -100,7 +100,10 @@ for i, row in df.iterrows():
     cols[4].markdown(row.get("linkedinJobTitle", ""))
     cols[5].markdown(row.get("linkedinHeadline", ""))
     cols[6].markdown(row.get("Company Website", ""))
-    cols[8].markdown(row.get("AI Summary", "")[:150] + "...")
+
+    # Safely show summary
+    ai_summary = row.get("AI Summary", "")
+    cols[8].markdown((ai_summary[:150] + "...") if ai_summary else "[No Summary]")
 
     # Editable
     email = cols[2].text_input(f"email_{i}", value=row.get("Email", ""), label_visibility="collapsed")
