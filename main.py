@@ -15,39 +15,28 @@ def send_email(to_email, subject, message_body):
             client_secret=st.secrets["gmail"]["client_secret"],
             token_uri=st.secrets["gmail"]["token_uri"],
         )
-
         message = MIMEText(message_body)
         message["to"] = to_email
         message["from"] = "me"
         message["subject"] = subject
         raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
-
         service = build("gmail", "v1", credentials=creds)
         send = service.users().messages().send(userId="me", body={"raw": raw_message}).execute()
         return True, send["id"]
-
     except Exception as e:
         return False, str(e)
 
 # === Sheet.best API endpoint ===
 sheet_url = "https://api.sheetbest.com/sheets/8e32f642-267a-4b79-a5f1-349733d44d71"
 
-# === Load Data from Google Sheet ===
+# === Load Data ===
 @st.cache_data(ttl=60)
 def load_data():
-    response = requests.get(sheet_url)
-    if response.status_code == 200:
-        return pd.DataFrame(response.json())
-    else:
-        st.error("Failed to load data.")
-        return pd.DataFrame()
+    res = requests.get(sheet_url)
+    return pd.DataFrame(res.json()) if res.status_code == 200 else pd.DataFrame()
 
-# === Save Changes to Google Sheet ===
 def save_row(row):
-    payload = {
-        "Name": row.get("Name", ""),
-        "Company": row.get("Company", "")
-    }
+    payload = { "Name": row.get("Name", ""), "Company": row.get("Company", "") }
     update = {
         "Email": row.get("Email", ""),
         "LinkedIn URL": row.get("LinkedIn URL", ""),
@@ -59,87 +48,76 @@ def save_row(row):
         "Email Draft": row.get("Email Draft", ""),
         "Lead Score": int(row.get("Lead Score") or 0)
     }
-    patch = requests.patch(f"{sheet_url}/search", params=payload, json=update)
-    return patch.status_code == 200
+    return requests.patch(f"{sheet_url}/search", params=payload, json=update).status_code == 200
 
-# === Streamlit UI ===
+# === Streamlit UI Setup ===
 st.set_page_config(page_title="AI Lead Dashboard", layout="wide")
-st.title("📊 AI Outreach Lead Dashboard")
+st.markdown("<h1 style='margin-bottom:1rem;'>📊 AI Outreach Lead Dashboard</h1>", unsafe_allow_html=True)
 
 df = load_data()
 
-# === Filter Sidebar ===
-st.sidebar.header("🔍 Filter Leads")
-status_filter = st.sidebar.selectbox("Filter by Status", options=["All", "Pending", "Processed", "Sent"])
-search_term = st.sidebar.text_input("Search by Company Name")
+# === Top Filters ===
+col_filter1, col_filter2 = st.columns([3, 3])
+status_filter = col_filter1.selectbox("Filter by Status", options=["All", "Pending", "Processed", "Sent"])
+search_term = col_filter2.text_input("Search by Company")
 
 if status_filter != "All":
     df = df[df["Status"].str.lower() == status_filter.lower()]
 if search_term:
     df = df[df["Company"].str.contains(search_term, case=False)]
 
-st.markdown(f"**Showing {len(df)} leads**")
+st.markdown(f"**{len(df)} leads matched. Scroll right → for full view.**")
 
-# === Table Header ===
-header = st.columns([1.2, 1.2, 1.8, 1.8, 1.5, 1.5, 2, 1, 2.5, 3, 0.8, 1])
-headers = [
-    "👤 Name", "🏢 Company", "✉️ Email", "🔗 LinkedIn", "💼 Job Title",
-    "📝 Headline", "🌐 Website", "📌 Status", "🧠 AI Summary", "📄 Email Draft", "⭐ Score", "🚀 Action"
-]
-for col, label in zip(header, headers):
-    col.markdown(f"**{label}**")
+# === Scrollable Table ===
+st.markdown("<div style='overflow-x:auto;'>", unsafe_allow_html=True)
 
-# === Table Body ===
 for i, row in df.iterrows():
-    cols = st.columns([1.2, 1.2, 1.8, 1.8, 1.5, 1.5, 2, 1, 2.5, 3, 0.8, 1])
+    with st.expander(f"💼 {row.get('Company', '')} — {row.get('Name', '')}"):
+        col1, col2, col3 = st.columns([2, 2, 6])
 
-    # Read-only
-    cols[0].markdown(row.get("Name", ""))
-    cols[1].markdown(row.get("Company", ""))
-    cols[3].markdown(row.get("LinkedIn URL", ""))
-    cols[4].markdown(row.get("linkedinJobTitle", ""))
-    cols[5].markdown(row.get("linkedinHeadline", ""))
-    cols[6].markdown(row.get("Company Website", ""))
+        # Top summary
+        col1.write(f"**Email:** {row.get('Email') or 'N/A'}")
+        col2.write(f"**Status:** {row.get('Status') or 'Pending'}")
+        col3.write(f"**LinkedIn:** {row.get('LinkedIn URL') or 'N/A'}")
 
-    ai_summary = row.get("AI Summary", "")
-    cols[8].markdown((ai_summary[:150] + "...") if isinstance(ai_summary, str) and ai_summary else "[No Summary]")
+        col4, col5, col6 = st.columns([2, 2, 2])
+        col4.write(f"**Job Title:** {row.get('linkedinJobTitle', '')}")
+        col5.write(f"**Headline:** {row.get('linkedinHeadline', '')}")
+        col6.write(f"**Website:** {row.get('Company Website', '')}")
 
-    # === Editable Fields with Safe Defaults ===
-    email = cols[2].text_input(f"email_{i}", value=row.get("Email") or "", label_visibility="collapsed")
+        # Editable fields
+        email = st.text_input(f"Email_{i}", value=row.get("Email") or "")
+        status = st.selectbox(f"Status_{i}", ["Pending", "Processed", "Sent"], index=["Pending", "Processed", "Sent"].index(row.get("Status", "Pending")))
+        email_draft = st.text_area(f"Email Draft_{i}", value=row.get("Email Draft") or "", height=120)
+        try:
+            lead_score = int(row.get("Lead Score") or 0)
+        except:
+            lead_score = 0
+        score = st.number_input(f"Lead Score_{i}", value=lead_score, step=1)
 
-    current_status = row.get("Status", "Pending")
-    status_options = ["Pending", "Processed", "Sent"]
-    status_index = status_options.index(current_status) if current_status in status_options else 0
-    status = cols[7].selectbox(f"status_{i}", options=status_options, index=status_index, label_visibility="collapsed")
+        # AI Summary
+        ai_summary = row.get("AI Summary", "")
+        with st.expander("🧠 View AI Summary"):
+            st.write(ai_summary if ai_summary else "_No summary generated_")
 
-    email_draft = cols[9].text_area(f"draft_{i}", value=row.get("Email Draft") or "", height=80, label_visibility="collapsed")
-
-    try:
-        score_value = int(row.get("Lead Score") or 0)
-    except:
-        score_value = 0
-    lead_score = cols[10].number_input(f"score_{i}", value=score_value, step=1, label_visibility="collapsed")
-
-    # === Send Now Button ===
-    if cols[11].button("Send Now", key=f"send_{i}"):
-        if not email:
-            st.warning(f"⚠️ No email for {row.get('Name', 'Unknown')}")
-        elif not email_draft:
-            st.warning(f"⚠️ No draft for {row.get('Name', 'Unknown')}")
-        else:
-            success, result = send_email(
-                to_email=email,
-                subject=f"Quick note for {row.get('Company', 'your business')}",
-                message_body=email_draft
-            )
-            if success:
-                row["Email"] = email
-                row["Status"] = "Sent"
-                row["Email Draft"] = email_draft
-                row["Lead Score"] = lead_score
-                if save_row(row):
-                    st.success(f"✅ Email sent to {email}")
-                else:
-                    st.warning("⚠️ Email sent, but failed to update sheet.")
+        # Send Now Button
+        if st.button(f"📤 Send Now to {email}", key=f"send_{i}"):
+            if not email:
+                st.warning("Missing email.")
+            elif not email_draft:
+                st.warning("Missing draft.")
             else:
-                st.error(f"❌ Failed to send: {result}")
+                success, result = send_email(email, f"Quick note for {row.get('Company', '')}", email_draft)
+                if success:
+                    row["Email"] = email
+                    row["Status"] = "Sent"
+                    row["Email Draft"] = email_draft
+                    row["Lead Score"] = score
+                    if save_row(row):
+                        st.success("✅ Email sent and sheet updated.")
+                    else:
+                        st.warning("⚠️ Email sent, but failed to update sheet.")
+                else:
+                    st.error(f"❌ Failed to send email: {result}")
+
+st.markdown("</div>", unsafe_allow_html=True)
