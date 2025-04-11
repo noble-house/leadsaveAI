@@ -6,7 +6,7 @@ from email.mime.text import MIMEText
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
-# === Gmail Email Sender ===
+# === Gmail Sender ===
 def send_email(to_email, subject, message_body):
     try:
         creds = Credentials(
@@ -26,14 +26,16 @@ def send_email(to_email, subject, message_body):
     except Exception as e:
         return False, str(e)
 
-# === Sheet.best API endpoint ===
+# === Google Sheet API Endpoint ===
 sheet_url = "https://api.sheetbest.com/sheets/8e32f642-267a-4b79-a5f1-349733d44d71"
 
+# === Load Sheet Data ===
 @st.cache_data(ttl=60)
 def load_data():
     res = requests.get(sheet_url)
     return pd.DataFrame(res.json()) if res.status_code == 200 else pd.DataFrame()
 
+# === Update Sheet Row ===
 def save_row(row):
     payload = { "Name": row.get("Name", ""), "Company": row.get("Company", "") }
     update = {
@@ -49,7 +51,7 @@ def save_row(row):
     }
     return requests.patch(f"{sheet_url}/search", params=payload, json=update).status_code == 200
 
-# === Streamlit App ===
+# === Streamlit UI Setup ===
 st.set_page_config(page_title="AI Lead Dashboard", layout="wide")
 st.markdown("<h1 style='margin-bottom:1rem;'>📊 AI Outreach Lead Dashboard</h1>", unsafe_allow_html=True)
 
@@ -96,9 +98,15 @@ for i, row in df.iterrows():
             score_value = 0
         lead_score = st.number_input(f"Lead Score_{i}", value=score_value, step=1)
 
-        # === Show Summary (safe, not nested)
+        # === Read-only AI Summary
         ai_summary = row.get("AI Summary", "")
-        st.text_area("🧠 AI Summary", value=ai_summary if ai_summary else "No summary generated.", height=100, disabled=True)
+        st.text_area(
+            label="🧠 AI Summary",
+            value=ai_summary if ai_summary else "No summary generated.",
+            height=100,
+            disabled=True,
+            key=f"ai_summary_{i}"  # ✅ Unique key fix
+        )
 
         # === Send Now
         if st.button(f"📤 Send Now to {email}", key=f"send_{i}"):
@@ -118,6 +126,6 @@ for i, row in df.iterrows():
                     else:
                         st.warning("⚠️ Email sent, but failed to update sheet.")
                 else:
-                    st.error(f"❌ Failed to send: {result}")
+                    st.error(f"❌ Failed to send email: {result}")
 
 st.markdown("</div>", unsafe_allow_html=True)
