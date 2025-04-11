@@ -77,17 +77,71 @@ st.markdown(f"**{len(df)} leads matched.**")
 if view_mode == "Table View":
     st.markdown("### 📋 Unified Table View")
 
+    # Inject custom CSS for table styling
+    st.markdown("""
+    <style>
+    .scroll-container {
+        overflow-x: auto;
+        padding: 0.5rem;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+    }
+    .table-row {
+        display: flex;
+        gap: 0.5rem;
+        align-items: center;
+        padding: 0.25rem 0;
+        border-bottom: 1px solid #eee;
+    }
+    .table-header {
+        font-weight: 600;
+        background-color: #f9f9f9;
+        border-bottom: 2px solid #ccc;
+        padding: 0.3rem 0;
+    }
+    .table-cell {
+        min-width: 140px;
+        flex: 1;
+    }
+    .send-btn {
+        min-width: 80px !important;
+        text-align: center;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+    # Table headers
+    st.markdown("""
+    <div class="scroll-container">
+        <div class="table-row table-header">
+            <div class="table-cell">Name</div>
+            <div class="table-cell">Company</div>
+            <div class="table-cell">Email</div>
+            <div class="table-cell">Job Title</div>
+            <div class="table-cell">Headline</div>
+            <div class="table-cell">Website</div>
+            <div class="table-cell">Status</div>
+            <div class="table-cell">Email Draft</div>
+            <div class="table-cell">Lead Score</div>
+            <div class="table-cell send-btn">Send</div>
+        </div>
+    """, unsafe_allow_html=True)
+
     for i, row in df.iterrows():
         with st.container():
-            cols = st.columns([1.2, 1.2, 1.8, 1.5, 1.5, 2, 1, 2.5, 3, 0.8, 1])
-            # Display
-            cols[0].markdown(row.get("Name", ""))
-            cols[1].markdown(row.get("Company", ""))
+            cols = st.columns([1.2, 1.2, 1.8, 1.5, 1.5, 2, 1, 2.5, 0.8, 1])
+            name = row.get("Name", "")
+            company = row.get("Company", "")
+            cols[0].markdown(f"**{name}**")
+            cols[1].markdown(f"**{company}**")
+
             email = cols[2].text_input(f"email_{i}", value=row.get("Email", ""), label_visibility="collapsed")
             job = cols[3].text_input(f"job_{i}", value=row.get("linkedinJobTitle", ""), label_visibility="collapsed")
             headline = cols[4].text_input(f"headline_{i}", value=row.get("linkedinHeadline", ""), label_visibility="collapsed")
             website = cols[5].text_input(f"website_{i}", value=row.get("Company Website", ""), label_visibility="collapsed")
-            status = cols[6].selectbox(f"status_{i}", ["Pending", "Processed", "Sent"], index=["Pending", "Processed", "Sent"].index(row.get("Status", "Pending")), label_visibility="collapsed")
+            status = cols[6].selectbox(f"status_{i}", ["Pending", "Processed", "Sent"],
+                                       index=["Pending", "Processed", "Sent"].index(row.get("Status", "Pending")),
+                                       label_visibility="collapsed")
             email_draft = cols[7].text_area(f"draft_{i}", value=row.get("Email Draft", ""), height=80, label_visibility="collapsed")
             try:
                 score = int(row.get("Lead Score") or 0)
@@ -95,13 +149,13 @@ if view_mode == "Table View":
                 score = 0
             lead_score = cols[8].number_input(f"score_{i}", value=score, step=1, label_visibility="collapsed")
 
-            if cols[10].button("Send", key=f"send_{i}"):
+            if cols[9].button("Send", key=f"send_{i}"):
                 if not email:
                     st.warning("⚠️ Missing email.")
                 elif not email_draft:
                     st.warning("⚠️ Missing draft.")
                 else:
-                    success, result = send_email(email, f"Quick note for {row.get('Company', '')}", email_draft)
+                    success, result = send_email(email, f"Quick note for {company}", email_draft)
                     if success:
                         row.update({
                             "Email": email,
@@ -120,6 +174,8 @@ if view_mode == "Table View":
                     else:
                         st.error(f"❌ Failed: {result}")
 
+    st.markdown("</div>", unsafe_allow_html=True)
+
 # === Expanded View
 else:
     st.markdown("### 🔍 Expanded View (1 per lead)")
@@ -137,7 +193,6 @@ else:
             col5.write(f"**Headline:** {row.get('linkedinHeadline', '')}")
             col6.write(f"**Website:** {row.get('Company Website', '')}")
 
-            # Editable
             email = st.text_input(f"Email_{i}", value=row.get("Email") or "")
             status = st.selectbox(f"Status_{i}", ["Pending", "Processed", "Sent"], index=["Pending", "Processed", "Sent"].index(row.get("Status", "Pending")))
             email_draft = st.text_area(f"Email Draft_{i}", value=row.get("Email Draft") or "", height=120)
