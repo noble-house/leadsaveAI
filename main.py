@@ -30,7 +30,7 @@ def send_email(to_email, subject, message_body):
     except Exception as e:
         return False, str(e)
 
-# === Sheet.best API endpoint ===
+# === Google Sheet API Endpoint ===
 sheet_url = "https://api.sheetbest.com/sheets/8e32f642-267a-4b79-a5f1-349733d44d71"
 
 # === Load and Save Sheet Data ===
@@ -86,7 +86,7 @@ for i, row in df.iterrows():
         col5.write(f"**Headline:** {row.get('linkedinHeadline', '')}")
         col6.write(f"**Website:** {row.get('Company Website', '')}")
 
-        # Editable Fields
+        # === Editable Fields
         email = st.text_input(f"Email_{i}", value=row.get("Email") or "")
         status_options = ["Pending", "Processed", "Sent"]
         status = st.selectbox(f"Status_{i}", status_options,
@@ -99,11 +99,11 @@ for i, row in df.iterrows():
             lead_score = 0
         score = st.number_input(f"Lead Score_{i}", value=lead_score, step=1)
 
-        # AI Summary (read-only)
+        # === Read-only AI Summary
         ai_summary = row.get("AI Summary", "")
         st.text_area("🧠 AI Summary", value=ai_summary if ai_summary else "No summary generated.", height=100, disabled=True, key=f"ai_summary_{i}")
 
-        # Send Now
+        # === Send Now
         if st.button(f"📤 Send Now to {email}", key=f"send_{i}"):
             if not email:
                 st.warning("⚠️ Missing email.")
@@ -118,9 +118,10 @@ for i, row in df.iterrows():
                     row["Lead Score"] = score
                     if save_row(row):
                         st.success("✅ Email sent and sheet updated.")
+                        st.experimental_rerun()  # 🔁 Force UI refresh
                     else:
                         st.warning("⚠️ Email sent, but failed to update sheet.")
                 else:
-                    st.error(f"❌ Failed to send: {result}")
+                    st.error(f"❌ Failed to send email: {result}")
 
 st.markdown("</div>", unsafe_allow_html=True)
