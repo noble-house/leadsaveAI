@@ -29,7 +29,6 @@ def send_email(to_email, subject, message_body):
     except Exception as e:
         return False, str(e)
 
-
 # === Sheet.best API endpoint ===
 sheet_url = "https://api.sheetbest.com/sheets/8e32f642-267a-4b79-a5f1-349733d44d71"
 
@@ -110,12 +109,14 @@ for i, row in edited_df.iterrows():
             **{row['Name']}** at **{row['Company']}**  
             ✉️ Email: `{row.get('Email', 'Not provided')}`  
             📄 **Draft Preview:**  
-            `{row['Email Draft'][:120]}...`
+            `{row['Email Draft'][:120] if row['Email Draft'] else '[No Draft]'}`
             """)
         with col2:
             if st.button("Send Now", key=f"send_{i}"):
                 if not row.get("Email"):
                     st.warning(f"⚠️ No email address for {row['Name']}")
+                elif not row.get("Email Draft"):
+                    st.warning(f"⚠️ No email draft for {row['Name']}")
                 else:
                     success, result = send_email(
                         to_email=row["Email"],
