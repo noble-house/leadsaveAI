@@ -29,7 +29,6 @@ def send_email(to_email, subject, message_body):
 # === Sheet.best API endpoint ===
 sheet_url = "https://api.sheetbest.com/sheets/8e32f642-267a-4b79-a5f1-349733d44d71"
 
-# === Load Data ===
 @st.cache_data(ttl=60)
 def load_data():
     res = requests.get(sheet_url)
@@ -50,13 +49,13 @@ def save_row(row):
     }
     return requests.patch(f"{sheet_url}/search", params=payload, json=update).status_code == 200
 
-# === Streamlit UI Setup ===
+# === Streamlit App ===
 st.set_page_config(page_title="AI Lead Dashboard", layout="wide")
 st.markdown("<h1 style='margin-bottom:1rem;'>📊 AI Outreach Lead Dashboard</h1>", unsafe_allow_html=True)
 
 df = load_data()
 
-# === Top Filters ===
+# === Filters on Top ===
 col_filter1, col_filter2 = st.columns([3, 3])
 status_filter = col_filter1.selectbox("Filter by Status", options=["All", "Pending", "Processed", "Sent"])
 search_term = col_filter2.text_input("Search by Company")
@@ -66,16 +65,14 @@ if status_filter != "All":
 if search_term:
     df = df[df["Company"].str.contains(search_term, case=False)]
 
-st.markdown(f"**{len(df)} leads matched. Scroll right → for full view.**")
+st.markdown(f"**{len(df)} leads matched. Scroll down and right → to view/edit.**")
 
-# === Scrollable Table ===
+# === Scrollable Table Area ===
 st.markdown("<div style='overflow-x:auto;'>", unsafe_allow_html=True)
 
 for i, row in df.iterrows():
     with st.expander(f"💼 {row.get('Company', '')} — {row.get('Name', '')}"):
         col1, col2, col3 = st.columns([2, 2, 6])
-
-        # Top summary
         col1.write(f"**Email:** {row.get('Email') or 'N/A'}")
         col2.write(f"**Status:** {row.get('Status') or 'Pending'}")
         col3.write(f"**LinkedIn:** {row.get('LinkedIn URL') or 'N/A'}")
@@ -85,39 +82,42 @@ for i, row in df.iterrows():
         col5.write(f"**Headline:** {row.get('linkedinHeadline', '')}")
         col6.write(f"**Website:** {row.get('Company Website', '')}")
 
-        # Editable fields
+        # === Editable Fields
         email = st.text_input(f"Email_{i}", value=row.get("Email") or "")
-        status = st.selectbox(f"Status_{i}", ["Pending", "Processed", "Sent"], index=["Pending", "Processed", "Sent"].index(row.get("Status", "Pending")))
+        status_options = ["Pending", "Processed", "Sent"]
+        status_index = status_options.index(row.get("Status", "Pending")) if row.get("Status", "Pending") in status_options else 0
+        status = st.selectbox(f"Status_{i}", status_options, index=status_index)
+
         email_draft = st.text_area(f"Email Draft_{i}", value=row.get("Email Draft") or "", height=120)
+
         try:
-            lead_score = int(row.get("Lead Score") or 0)
+            score_value = int(row.get("Lead Score") or 0)
         except:
-            lead_score = 0
-        score = st.number_input(f"Lead Score_{i}", value=lead_score, step=1)
+            score_value = 0
+        lead_score = st.number_input(f"Lead Score_{i}", value=score_value, step=1)
 
-        # AI Summary
+        # === Show Summary (safe, not nested)
         ai_summary = row.get("AI Summary", "")
-        with st.expander("🧠 View AI Summary"):
-            st.write(ai_summary if ai_summary else "_No summary generated_")
+        st.text_area("🧠 AI Summary", value=ai_summary if ai_summary else "No summary generated.", height=100, disabled=True)
 
-        # Send Now Button
+        # === Send Now
         if st.button(f"📤 Send Now to {email}", key=f"send_{i}"):
             if not email:
-                st.warning("Missing email.")
+                st.warning("⚠️ Missing email.")
             elif not email_draft:
-                st.warning("Missing draft.")
+                st.warning("⚠️ Missing draft.")
             else:
                 success, result = send_email(email, f"Quick note for {row.get('Company', '')}", email_draft)
                 if success:
                     row["Email"] = email
                     row["Status"] = "Sent"
                     row["Email Draft"] = email_draft
-                    row["Lead Score"] = score
+                    row["Lead Score"] = lead_score
                     if save_row(row):
                         st.success("✅ Email sent and sheet updated.")
                     else:
                         st.warning("⚠️ Email sent, but failed to update sheet.")
                 else:
-                    st.error(f"❌ Failed to send email: {result}")
+                    st.error(f"❌ Failed to send: {result}")
 
 st.markdown("</div>", unsafe_allow_html=True)
