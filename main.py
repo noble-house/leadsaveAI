@@ -8,29 +8,21 @@ def send_email(to_email, subject, message_body):
         response = requests.post(
             "https://api.sendgrid.com/v3/mail/send",
             headers={
-                "Authorization": f"Bearer {st.secrets['sendgrid']['api_key']}",
+                "Authorization": f"Bearer " + st.secrets["sendgrid"]["api_key"],
                 "Content-Type": "application/json"
             },
             json={
-                "personalizations": [{
-                    "to": [{"email": to_email}]
-                }],
-                "from": {"email": st.secrets['sendgrid']['from_email']},
+                "personalizations": [{"to": [{"email": to_email}]}],
+                "from": {"email": st.secrets["sendgrid"]["from_email"]},
                 "subject": subject,
-                "content": [{
-                    "type": "text/plain",
-                    "value": message_body
-                }]
+                "content": [{"type": "text/plain", "value": message_body}]
             }
         )
-        if response.status_code == 202:
-            return True, "Sent successfully"
-        else:
-            return False, response.text
+        return response.status_code == 202, response.text
     except Exception as e:
         return False, str(e)
 
-# === Google Sheet API Endpoint ===
+# === Google Sheet Endpoint ===
 sheet_url = "https://api.sheetbest.com/sheets/8e32f642-267a-4b79-a5f1-349733d44d71"
 
 @st.cache_data(ttl=60)
@@ -53,18 +45,16 @@ def save_row(row):
     }
     return requests.patch(f"{sheet_url}/search", params=payload, json=update).status_code == 200
 
-# === Streamlit App Setup ===
+# === UI Setup ===
 st.set_page_config(page_title="AI Lead Dashboard", layout="wide")
 st.title("📊 AI Outreach Lead Dashboard")
 
-# === Load Data
 df = load_data()
 
-# === Filters + View Toggle
-col1, col2, col3 = st.columns([3, 3, 3])
-status_filter = col1.selectbox("Filter by Status", ["All", "Pending", "Processed", "Sent"])
-search_term = col2.text_input("Search by Company")
-view_mode = col3.radio("View Mode", ["Expanded View", "Table View"], horizontal=True)
+col1, col2, col3 = st.columns(3)
+status_filter = col1.selectbox("📌 Filter by Status", ["All", "Pending", "Processed", "Sent"])
+search_term = col2.text_input("🔍 Search by Company")
+view_mode = col3.radio("🖥️ View Mode", ["Expanded View", "Table View"], horizontal=True)
 
 if status_filter != "All":
     df = df[df["Status"].str.lower() == status_filter.lower()]
@@ -73,64 +63,79 @@ if search_term:
 
 st.markdown(f"**{len(df)} leads matched.**")
 
-# === TABLE VIEW ===
+# === CRM TABLE VIEW ===
 if view_mode == "Table View":
-    st.markdown("### 📋 Unified Table View (Improved Layout)")
-    st.markdown("<div style='overflow-x:auto;'>", unsafe_allow_html=True)
+    st.markdown("""
+    <style>
+        .crm-card {
+            background-color: #ffffff;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 10px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+        .crm-card:hover {
+            background-color: #fafafa;
+        }
+    </style>
+    """, unsafe_allow_html=True)
 
     for i, row in df.iterrows():
         with st.container():
-            cols = st.columns([1.2, 1.2, 1.8, 1.5, 1.5, 2, 1, 2.5, 0.8, 1])
+            st.markdown('<div class="crm-card">', unsafe_allow_html=True)
+            cols = st.columns([1.5, 1.5, 2, 1.5, 1.5, 2, 1, 3, 0.8, 1])
+
             name = row.get("Name", "")
             company = row.get("Company", "")
+            email = row.get("Email", "")
+            job = row.get("linkedinJobTitle", "")
+            headline = row.get("linkedinHeadline", "")
+            website = row.get("Company Website", "")
+            status = row.get("Status", "Pending")
+            email_draft = row.get("Email Draft", "")
+            score = int(row.get("Lead Score") or 0)
 
             cols[0].text_input("Name", value=name, key=f"name_{i}", disabled=True)
             cols[1].text_input("Company", value=company, key=f"company_{i}", disabled=True)
-            email = cols[2].text_input("Email", value=row.get("Email", ""), key=f"email_{i}")
-            job = cols[3].text_input("Job Title", value=row.get("linkedinJobTitle", ""), key=f"job_{i}")
-            headline = cols[4].text_input("Headline", value=row.get("linkedinHeadline", ""), key=f"headline_{i}")
-            website = cols[5].text_input("Website", value=row.get("Company Website", ""), key=f"website_{i}")
-            status = cols[6].selectbox("Status", ["Pending", "Processed", "Sent"],
-                                       index=["Pending", "Processed", "Sent"].index(row.get("Status", "Pending")),
-                                       key=f"status_{i}")
-            email_draft = cols[7].text_area("Email Draft", value=row.get("Email Draft", ""), height=100, key=f"draft_{i}")
-            try:
-                score = int(row.get("Lead Score") or 0)
-            except:
-                score = 0
-            lead_score = cols[8].number_input("Score", value=score, step=1, key=f"score_{i}")
+            new_email = cols[2].text_input("Email", value=email, key=f"email_{i}")
+            new_job = cols[3].text_input("Job Title", value=job, key=f"job_{i}")
+            new_headline = cols[4].text_input("Headline", value=headline, key=f"headline_{i}")
+            new_website = cols[5].text_input("Website", value=website, key=f"website_{i}")
+            new_status = cols[6].selectbox("Status", ["Pending", "Processed", "Sent"],
+                                           index=["Pending", "Processed", "Sent"].index(status), key=f"status_{i}")
+            new_draft = cols[7].text_area("Email Draft", value=email_draft, height=100, key=f"draft_{i}")
+            new_score = cols[8].number_input("Score", value=score, step=1, key=f"score_{i}")
 
-            if cols[9].button("Send", key=f"send_{i}"):
-                if not email:
-                    st.warning(f"⚠️ Missing email for {name}")
-                elif not email_draft:
-                    st.warning(f"⚠️ Missing draft for {name}")
+            if cols[9].button("📤 Send", key=f"send_{i}"):
+                if not new_email:
+                    st.warning(f"Missing email for {name}")
+                elif not new_draft:
+                    st.warning(f"Missing draft for {name}")
                 else:
-                    success, result = send_email(email, f"Quick note for {company}", email_draft)
+                    success, result = send_email(new_email, f"Quick note for {company}", new_draft)
                     if success:
                         row.update({
-                            "Email": email,
+                            "Email": new_email,
                             "Status": "Sent",
-                            "linkedinJobTitle": job,
-                            "linkedinHeadline": headline,
-                            "Company Website": website,
-                            "Email Draft": email_draft,
-                            "Lead Score": lead_score
+                            "linkedinJobTitle": new_job,
+                            "linkedinHeadline": new_headline,
+                            "Company Website": new_website,
+                            "Email Draft": new_draft,
+                            "Lead Score": new_score
                         })
                         if save_row(row):
-                            st.success(f"✅ Email sent to {email}")
+                            st.success(f"✅ Sent to {new_email}")
                             st.rerun()
                         else:
                             st.warning("⚠️ Sent but failed to update sheet.")
                     else:
                         st.error(f"❌ Failed to send: {result}")
-
-    st.markdown("</div>", unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
 
 # === EXPANDED VIEW ===
 else:
     st.markdown("### 🔍 Expanded View (1 per lead)")
-    st.markdown("<div style='overflow-x:auto;'>", unsafe_allow_html=True)
 
     for i, row in df.iterrows():
         with st.expander(f"💼 {row.get('Company', '')} — {row.get('Name', '')}"):
@@ -148,19 +153,17 @@ else:
             status = st.selectbox(f"Status_{i}", ["Pending", "Processed", "Sent"],
                                   index=["Pending", "Processed", "Sent"].index(row.get("Status", "Pending")))
             email_draft = st.text_area(f"Email Draft_{i}", value=row.get("Email Draft") or "", height=120)
-            try:
-                score = int(row.get("Lead Score") or 0)
-            except:
-                score = 0
+            score = int(row.get("Lead Score") or 0)
             lead_score = st.number_input(f"Lead Score_{i}", value=score, step=1)
             ai_summary = row.get("AI Summary", "")
-            st.text_area("🧠 AI Summary", value=ai_summary if ai_summary else "No summary generated.", height=100, disabled=True, key=f"ai_summary_{i}")
+            st.text_area("🧠 AI Summary", value=ai_summary if ai_summary else "No summary generated.",
+                         height=100, disabled=True, key=f"ai_summary_{i}")
 
             if st.button(f"📤 Send Now to {email}", key=f"send_exp_{i}"):
                 if not email:
-                    st.warning("⚠️ Missing email.")
+                    st.warning("Missing email.")
                 elif not email_draft:
-                    st.warning("⚠️ Missing draft.")
+                    st.warning("Missing draft.")
                 else:
                     success, result = send_email(email, f"Quick note for {row.get('Company', '')}", email_draft)
                     if success:
@@ -174,8 +177,6 @@ else:
                             st.success("✅ Email sent and sheet updated.")
                             st.rerun()
                         else:
-                            st.warning("⚠️ Sent, but failed to update sheet.")
+                            st.warning("Sent, but failed to update sheet.")
                     else:
-                        st.error(f"❌ Failed to send email: {result}")
-
-    st.markdown("</div>", unsafe_allow_html=True)
+                        st.error(f"❌ Failed to send: {result}")
