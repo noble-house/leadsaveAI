@@ -45,8 +45,8 @@ def load_data():
 # === Save Changes to Google Sheet ===
 def save_row(row):
     payload = {
-        "Name": row["Name"],
-        "Company": row["Company"]
+        "Name": row.get("Name", ""),
+        "Company": row.get("Company", "")
     }
     update = {
         "Email": row.get("Email", ""),
@@ -57,7 +57,7 @@ def save_row(row):
         "Status": row.get("Status", ""),
         "AI Summary": row.get("AI Summary", ""),
         "Email Draft": row.get("Email Draft", ""),
-        "Lead Score": int(row["Lead Score"]) if row.get("Lead Score") else 0
+        "Lead Score": int(row.get("Lead Score") or 0)
     }
     patch = requests.patch(f"{sheet_url}/search", params=payload, json=update)
     return patch.status_code == 200
@@ -101,31 +101,35 @@ for i, row in df.iterrows():
     cols[5].markdown(row.get("linkedinHeadline", ""))
     cols[6].markdown(row.get("Company Website", ""))
 
-    # Safely show summary
     ai_summary = row.get("AI Summary", "")
-    cols[8].markdown((ai_summary[:150] + "...") if ai_summary else "[No Summary]")
+    cols[8].markdown((ai_summary[:150] + "...") if isinstance(ai_summary, str) and ai_summary else "[No Summary]")
 
-    # Editable
-    email = cols[2].text_input(f"email_{i}", value=row.get("Email", ""), label_visibility="collapsed")
-    status = cols[7].selectbox(
-        f"status_{i}",
-        options=["Pending", "Processed", "Sent"],
-        index=["Pending", "Processed", "Sent"].index(row.get("Status", "Pending")),
-        label_visibility="collapsed"
-    )
-    email_draft = cols[9].text_area(f"draft_{i}", value=row.get("Email Draft", ""), height=80, label_visibility="collapsed")
-    lead_score = cols[10].number_input(f"score_{i}", value=int(row.get("Lead Score", 0)), step=1, label_visibility="collapsed")
+    # === Editable Fields with Safe Defaults ===
+    email = cols[2].text_input(f"email_{i}", value=row.get("Email") or "", label_visibility="collapsed")
 
-    # Send button
+    current_status = row.get("Status", "Pending")
+    status_options = ["Pending", "Processed", "Sent"]
+    status_index = status_options.index(current_status) if current_status in status_options else 0
+    status = cols[7].selectbox(f"status_{i}", options=status_options, index=status_index, label_visibility="collapsed")
+
+    email_draft = cols[9].text_area(f"draft_{i}", value=row.get("Email Draft") or "", height=80, label_visibility="collapsed")
+
+    try:
+        score_value = int(row.get("Lead Score") or 0)
+    except:
+        score_value = 0
+    lead_score = cols[10].number_input(f"score_{i}", value=score_value, step=1, label_visibility="collapsed")
+
+    # === Send Now Button ===
     if cols[11].button("Send Now", key=f"send_{i}"):
         if not email:
-            st.warning(f"⚠️ No email for {row['Name']}")
+            st.warning(f"⚠️ No email for {row.get('Name', 'Unknown')}")
         elif not email_draft:
-            st.warning(f"⚠️ No draft for {row['Name']}")
+            st.warning(f"⚠️ No draft for {row.get('Name', 'Unknown')}")
         else:
             success, result = send_email(
                 to_email=email,
-                subject=f"Quick note for {row['Company']}",
+                subject=f"Quick note for {row.get('Company', 'your business')}",
                 message_body=email_draft
             )
             if success:
